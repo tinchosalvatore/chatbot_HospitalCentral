@@ -68,6 +68,7 @@ def configure_gemini(api_key):
         3. Si la respuesta NO está en tu base de conocimientos, di: 
            "Lo siento, no tengo información específica sobre ese caso particular. Te recomendaría consultarlo con un especialista."
         4. Mantén un tono cálido y profesional.
+        5. Utilizar solo informacion provista en el contexto. En caso de que una pregunta sea sobre algo que no esté en el contexto, responder con "No tengo información sobre eso".
         """
     )
 
