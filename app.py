@@ -10,7 +10,7 @@ load_dotenv()
 api_key = os.getenv("GEMINI_API_KEY")
 
 # Configura la página
-st.set_page_config(page_title="Asistente Médico IA", page_icon="🩺")
+st.set_page_config(page_title="Asistente Médico IA", page_icon="🩺", layout="wide")
 
 # --- CSS HACK: Ocultar indicadores de carga y menús técnicos ---
 st.markdown("""
@@ -20,29 +20,6 @@ st.markdown("""
     footer {visibility: hidden;}          /* Oculta el 'Made with Streamlit' */
     </style>
 """, unsafe_allow_html=True)
-
-# --- BARRA LATERAL (SIDEBAR) ---
-with st.sidebar:
-    # Usamos una imagen médica genérica o el logo del hospital si lo tuvieras
-    st.image("https://cdn-icons-png.flaticon.com/512/3774/3774299.png", width=100)
-    st.title("Asistente Virtual")
-    st.markdown("---")
-    
-    st.markdown("### ⚠️ Aviso Legal")
-    st.info(
-        "Este asistente utiliza inteligencia artificial. "
-        "La información es orientativa y no sustituye "
-        "la consulta médica profesional."
-    )
-    
-    # Botón para limpiar chat
-    if st.button("🗑️ Nueva Consulta"):
-        if "chat_session" in st.session_state:
-            del st.session_state.chat_session
-        st.rerun()
-
-# --- TÍTULO PRINCIPAL ---
-st.title("🩺 Chatbot Hospital Central")
 
 # --- LÓGICA DE GEMINI ---
 def configure_gemini(api_key):
@@ -95,10 +72,9 @@ if not os.path.exists(pdf_path):
     st.error(f"❌ Falta el archivo {pdf_path}")
     st.stop()
 
+pdf_file = None # Initialize pdf_file before the try block
 try:
     pdf_file = upload_and_cache_pdf(pdf_path)
-    with st.sidebar:
-        st.success("✅ Sistema Operativo")
 except Exception as e:
     st.error(f"Error de conexión: {e}")
     st.stop()
@@ -119,23 +95,48 @@ if "chat_session" not in st.session_state:
         ]
     )
 
-# --- INTERFAZ DE CHAT ---
+# --- LAYOUT DE COLUMNAS ---
+col1, col2 = st.columns([1, 4]) # 1 parte para la "sidebar", 4 para el chat
 
-# Mostrar historial
-for message in st.session_state.chat_session.history[2:]:
-    role = "user" if message.role == "user" else "assistant"
-    # AL NO PONER 'avatar=', STREAMLIT USA LOS ICONOS NATIVOS SERIOS
-    with st.chat_message(role): 
-        st.markdown(message.parts[0].text)
-
-# Input
-if prompt := st.chat_input("Escribe tu consulta..."):
-    with st.chat_message("user"): # Icono nativo de usuario
-        st.markdown(prompt)
+with col1:
+    # Usamos una imagen médica genérica o el logo del hospital si lo tuvieras
+    st.image("https://cdn-icons-png.flaticon.com/512/3774/3774299.png", width=100)
+    st.title("Asistente Virtual")
+    st.markdown("---")
     
-    try:
-        response = st.session_state.chat_session.send_message(prompt)
-        with st.chat_message("assistant"): # Icono nativo de asistente (AI)
-            st.markdown(response.text)
-    except Exception as e:
-        st.error(f"Error de API: {e}")
+    st.markdown("### ⚠️ Aviso Legal")
+    st.info(
+        "Este asistente utiliza inteligencia artificial. "
+        "La información es orientativa y no sustituye "
+        "la consulta médica profesional."
+    )
+    
+    # Botón para limpiar chat
+    if st.button("🗑️ Nueva Consulta"):
+        if "chat_session" in st.session_state:
+            del st.session_state.chat_session
+        st.rerun()
+    
+    st.success("✅ Sistema Operativo") # Mensaje de éxito ahora en la columna 1
+
+with col2:
+    st.title("🩺 Chatbot Hospital Central")
+
+    # Mostrar historial
+    for message in st.session_state.chat_session.history[2:]:
+        role = "user" if message.role == "user" else "assistant"
+        # AL NO PONER 'avatar=', STREAMLIT USA LOS ICONOS NATIVOS SERIOS
+        with st.chat_message(role): 
+            st.markdown(message.parts[0].text)
+
+    # Input
+    if prompt := st.chat_input("Escribe tu consulta..."):
+        with st.chat_message("user"): # Icono nativo de usuario
+            st.markdown(prompt)
+        
+        try:
+            response = st.session_state.chat_session.send_message(prompt)
+            with st.chat_message("assistant"): # Icono nativo de asistente (AI)
+                st.markdown(response.text)
+        except Exception as e:
+            st.error(f"Error de API: {e}")
