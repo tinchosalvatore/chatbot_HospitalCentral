@@ -55,18 +55,17 @@ def get_client():
     return genai.Client(api_key=api_key)
 
 
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
 def upload_and_cache_pdf(file_path):
     client = get_client()
-    with st.spinner("Iniciando sistema de atención..."):
-        file = client.files.upload(
-            file=file_path,
-            config=types.UploadFileConfig(mime_type="application/pdf"),
-        )
-        while file.state.name == "PROCESSING":
-            time.sleep(1)
-            file = client.files.get(name=file.name)
-        return file
+    file = client.files.upload(
+        file=file_path,
+        config=types.UploadFileConfig(mime_type="application/pdf"),
+    )
+    while file.state.name == "PROCESSING":
+        time.sleep(1)
+        file = client.files.get(name=file.name)
+    return file
 
 
 def create_chat(model_name, pdf_file, prior_history=None):
@@ -109,21 +108,6 @@ if not os.path.exists(pdf_path):
     st.error(f"❌ Falta el archivo {pdf_path}")
     st.stop()
 
-try:
-    pdf_file = upload_and_cache_pdf(pdf_path)
-except Exception as e:
-    st.error(f"Error de conexión: {e}")
-    st.stop()
-
-if "active_model" not in st.session_state:
-    st.session_state.active_model = PRIMARY_MODEL
-
-if "chat_session" not in st.session_state:
-    st.session_state.chat_session = create_chat(st.session_state.active_model, pdf_file)
-
-if "msg_timestamps" not in st.session_state:
-    st.session_state.msg_timestamps = []
-
 RATE_LIMIT = 6
 RATE_WINDOW = 60  # seconds
 
@@ -149,23 +133,52 @@ with st.sidebar:
         "la consulta médica profesional."
     )
 
-    if st.button("🗑️ Nueva Consulta"):
-        for key in ("chat_session", "active_model"):
-            st.session_state.pop(key, None)
-        st.rerun()
+    if "chat_session" in st.session_state:
+        if st.button("🗑️ Nueva Consulta"):
+            for key in ("chat_session", "active_model"):
+                st.session_state.pop(key, None)
+            st.rerun()
 
-    if st.session_state.active_model == FALLBACK_MODEL:
-        st.warning("⚠️ Usando modelo de respaldo")
-    else:
-        st.success("✅ Sistema Operativo")
+        if st.session_state.get("active_model") == FALLBACK_MODEL:
+            st.warning("⚠️ Usando modelo de respaldo")
+        else:
+            st.success("✅ Sistema Operativo")
 
 st.title("🩺 Chatbot sobre Lupus del Hospital Central 💜")
 
-for message in st.session_state.chat_session.get_history()[2:]:
+# --- PDF LOAD ---
+
+try:
+    with st.spinner("Iniciando sistema de atención médica..."):
+        pdf_file = upload_and_cache_pdf(pdf_path)
+except Exception as e:
+    st.error(f"Error de conexión: {e}")
+    st.stop()
+
+if "active_model" not in st.session_state:
+    st.session_state.active_model = PRIMARY_MODEL
+
+if "chat_session" not in st.session_state:
+    st.session_state.chat_session = create_chat(st.session_state.active_model, pdf_file)
+
+if "msg_timestamps" not in st.session_state:
+    st.session_state.msg_timestamps = []
+
+history = st.session_state.chat_session.get_history()[2:]
+i = 0
+while i < len(history):
+    message = history[i]
     role = "user" if message.role == "user" else "assistant"
-    text = "".join(p.text for p in message.parts if not getattr(p, "thought", False) and p.text)
-    with st.chat_message(role):
-        st.markdown(text)
+    chunks = []
+    while i < len(history) and history[i].role == message.role:
+        text = "".join(p.text for p in history[i].parts if not getattr(p, "thought", False) and p.text)
+        if text:
+            chunks.append(text)
+        i += 1
+    combined = "".join(chunks)
+    if combined:
+        with st.chat_message(role):
+            st.markdown(combined)
 
 if prompt := st.chat_input("Escribe tu consulta..."):
     if is_rate_limited():
@@ -176,16 +189,23 @@ if prompt := st.chat_input("Escribe tu consulta..."):
         st.markdown(prompt)
 
     try:
-        response = st.session_state.chat_session.send_message(prompt)
         with st.chat_message("assistant"):
-            st.markdown(response.text)
+            placeholder = st.empty()
+            placeholder.markdown("_Procesando tu pregunta..._ ⏳")
+            full_text = ""
+            for chunk in st.session_state.chat_session.send_message_stream(prompt):
+                if chunk.text:
+                    full_text += chunk.text
+                    placeholder.markdown(full_text + "▌")
+            placeholder.markdown(full_text)
 
     except Exception as primary_error:
         if st.session_state.active_model != FALLBACK_MODEL:
             logging.warning("Modelo principal falló, cambiando a fallback. Error: %s", primary_error)
             try:
                 switch_to_fallback(pdf_file)
-                response = st.session_state.chat_session.send_message(prompt)
+                with st.spinner("Reintentando con modelo de respaldo..."):
+                    response = st.session_state.chat_session.send_message(prompt)
                 with st.chat_message("assistant"):
                     st.markdown(response.text)
                 st.rerun()
