@@ -22,7 +22,7 @@ SYSTEM_INSTRUCTION = """
 
         REGLAS DE SEGURIDAD CRÍTICA (PRIORIDAD 1):
         - Si el usuario menciona síntomas de emergencia (dolor de pecho, dificultad para respirar, sangrado profuso, pensamientos suicidas), IGNORA el documento.
-        - Tu única respuesta debe ser: "⚠️ Esto parece una emergencia médica. Por favor, corta esta comunicación y llama inmediatamente al servicio de urgencias (911) o acude al hospital más cercano."
+        - Tu única respuesta debe ser: "⚠️ Te recuerdo que soy un asistente IA, no puedo realizar diagnósticos ni resolver casos clínicos específicos. Te recomendaría consultarlo con un especialista."
 
         REGLAS DE INTERACCIÓN:
         1. NUNCA menciones "el documento", "el pdf", "el texto adjunto".
@@ -165,6 +165,14 @@ if "msg_timestamps" not in st.session_state:
     st.session_state.msg_timestamps = []
 
 history = st.session_state.chat_session.get_history()[2:]
+
+if not history:
+    st.info(
+        "Aquí encontrarás información sobre el Lupus desarrollada y recopilada por el Servicio de Inmunología "
+        "del Hospital Central de Mendoza. Es una herramienta con fines exclusivamente informativos, no puede "
+        "realizar diagnósticos ni resolver casos clínicos específicos y no reemplaza el asesoramiento de tu médico."
+    )
+
 i = 0
 while i < len(history):
     message = history[i]
