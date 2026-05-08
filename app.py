@@ -12,8 +12,14 @@ load_dotenv()
 
 api_key = os.getenv("GEMINI_API_KEY")
 
-PRIMARY_MODEL = "models/gemma-4-26b-a4b-it"
-FALLBACK_MODEL = "models/gemma-4-31b-it"
+MODEL_CHAIN = [
+    "models/gemini-2.5-pro",
+    "models/gemini-2.5-flash",
+    "models/gemini-2.5-flash-lite",
+    "models/gemma-4-26b-a4b-it",
+    "models/gemma-4-31b-it",
+]
+PRIMARY_MODEL = MODEL_CHAIN[0]
 
 SYSTEM_INSTRUCTION = """
         Actúa como un asistente IA de medicina, empático y experto, del Hospital Central en Mendoza. Tu nombre de pila para las respuestas es "Lupe", asistente IA para lupus.
@@ -91,10 +97,10 @@ def create_chat(model_name, pdf_file, prior_history=None):
     )
 
 
-def switch_to_fallback(pdf_file):
+def switch_to_fallback(pdf_file, target_model):
     prior = list(st.session_state.chat_session.get_history()[2:])
-    st.session_state.chat_session = create_chat(FALLBACK_MODEL, pdf_file, prior_history=prior)
-    st.session_state.active_model = FALLBACK_MODEL
+    st.session_state.chat_session = create_chat(target_model, pdf_file, prior_history=prior)
+    st.session_state.active_model = target_model
 
 
 # --- INICIALIZACIÓN ---
@@ -108,7 +114,7 @@ if not os.path.exists(pdf_path):
     st.error(f"❌ Falta el archivo {pdf_path}")
     st.stop()
 
-RATE_LIMIT = 6
+RATE_LIMIT = 3
 RATE_WINDOW = 60  # seconds
 
 def is_rate_limited():
@@ -139,7 +145,7 @@ with st.sidebar:
                 st.session_state.pop(key, None)
             st.rerun()
 
-        if st.session_state.get("active_model") == FALLBACK_MODEL:
+        if st.session_state.get("active_model", PRIMARY_MODEL) != PRIMARY_MODEL:
             st.warning("⚠️ Usando modelo de respaldo")
         else:
             st.success("✅ Sistema Operativo")
@@ -207,19 +213,30 @@ if prompt := st.chat_input("Escribe tu consulta..."):
                     placeholder.markdown(full_text + "▌")
             placeholder.markdown(full_text)
 
-    except Exception as primary_error:
-        if st.session_state.active_model != FALLBACK_MODEL:
-            logging.warning("Modelo principal falló, cambiando a fallback. Error: %s", primary_error)
+    except Exception as error:
+        active = st.session_state.active_model
+        try:
+            current_idx = MODEL_CHAIN.index(active)
+        except ValueError:
+            current_idx = len(MODEL_CHAIN) - 1
+
+        response = None
+        for next_model in MODEL_CHAIN[current_idx + 1:]:
+            logging.warning("Modelo %s falló, intentando %s. Error: %s", active, next_model, error)
             try:
-                switch_to_fallback(pdf_file)
+                switch_to_fallback(pdf_file, next_model)
                 with st.spinner("Reintentando con modelo de respaldo..."):
                     response = st.session_state.chat_session.send_message(prompt)
-                with st.chat_message("assistant"):
-                    st.markdown(response.text)
-                st.rerun()
-            except Exception as fallback_error:
-                logging.error("Fallback también falló. Error: %s", fallback_error)
-                st.error("Lo siento, hubo un problema técnico. Por favor, intenta de nuevo en unos momentos.")
+                active = next_model
+                break
+            except Exception as e:
+                error = e
+                active = next_model
+
+        if response:
+            with st.chat_message("assistant"):
+                st.markdown(response.text)
+            st.rerun()
         else:
-            logging.error("Error en modelo fallback: %s", primary_error)
+            logging.error("Todos los modelos fallaron. Último error: %s", error)
             st.error("Lo siento, hubo un problema técnico. Por favor, intenta de nuevo en unos momentos.")
