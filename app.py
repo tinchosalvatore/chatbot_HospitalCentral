@@ -13,7 +13,6 @@ load_dotenv()
 api_key = os.getenv("GEMINI_API_KEY")
 
 MODEL_CHAIN = [
-    "models/gemini-2.5-pro",
     "models/gemini-2.5-flash",
     "models/gemini-2.5-flash-lite",
     "models/gemma-4-26b-a4b-it",
@@ -145,10 +144,7 @@ with st.sidebar:
                 st.session_state.pop(key, None)
             st.rerun()
 
-        if st.session_state.get("active_model", PRIMARY_MODEL) != PRIMARY_MODEL:
-            st.warning("⚠️ Usando modelo de respaldo")
-        else:
-            st.success("✅ Sistema Operativo")
+        st.success("✅ Sistema Operativo")
 
 st.title("🩺 Chatbot sobre Lupus del Hospital Central 💜")
 
@@ -225,8 +221,7 @@ if prompt := st.chat_input("Escribe tu consulta..."):
             logging.warning("Modelo %s falló, intentando %s. Error: %s", active, next_model, error)
             try:
                 switch_to_fallback(pdf_file, next_model)
-                with st.spinner("Reintentando con modelo de respaldo..."):
-                    response = st.session_state.chat_session.send_message(prompt)
+                response = st.session_state.chat_session.send_message(prompt)
                 active = next_model
                 break
             except Exception as e:
